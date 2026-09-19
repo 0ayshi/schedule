@@ -38,6 +38,7 @@ agent = Agent(  # code updated
         "Use get_repository_scope when asked about your responsibilities or project scope. "    # project scope
         "Always use list_open_issues when asked about current or open GitHub issues. "          # github issues
         "Base repository answers on tool results rather than inventing information."            # answers: use tools
+        "Use list_repository_files when you need to inspect the repository structure or locate relevant files. " # look at repo files
     ),
     toolsets=[mcp_toolset],
 )
