@@ -26,10 +26,25 @@ MODEL_ID = "nvidia.nemotron-super-3-120b"
 #MCP_SERVER = Path(__file__).parents[1] / "mcp_servers_python" / "fastmcp_server.py" - changed mcp server path
 MCP_SERVER = Path(__file__).parents[1] / "custodian_mcp" / "fastmcp_server.py"
 
+# code updated
+# Forward only the GitHub token required by the MCP subprocess.
+MCP_ENV = {}
+
+github_token = os.getenv("GITHUB_TOKEN")
+if github_token:
+    MCP_ENV["GITHUB_TOKEN"] = github_token
+
 #region agent-configuration
 # This is the same Bedrock model and local MCP toolset as the terminal agent.
 model = BedrockConverseModel(MODEL_ID, provider=BedrockProvider(region_name=REGION))
-mcp_toolset = MCPToolset(StdioTransport(command=sys.executable, args=[str(MCP_SERVER)]))
+mcp_toolset = MCPToolset(
+    StdioTransport(
+        command=sys.executable,
+        args=[str(MCP_SERVER)],
+        env=MCP_ENV,
+    )
+)
+
 agent = Agent(  # code updated
     model,
     instructions=(
@@ -41,6 +56,9 @@ agent = Agent(  # code updated
         "Use list_repository_files when you need to inspect the repository structure or locate relevant files. " # look at repo files
         "Use get_repository_file to read a relevant file after locating it with list_repository_files. "         # read file after locating it
         "Use search_repository_file instead of reading an entire large file when looking for specific code. "    # read relavent code instead of entire file
+        "Before posting an issue comment, draft the exact comment and show it to the user. "                     # draft comment and show user before posting issue
+        "Only call add_issue_comment with confirmed=True after the user explicitly approves that exact comment. "# only call after user approves comment
+        "Never treat a request to investigate or draft as permission to post."                                   # cannot post request until you clearly say post it
     ),
     toolsets=[mcp_toolset],
 )

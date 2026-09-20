@@ -216,5 +216,53 @@ def search_repository_file(
         "matches": matches,
     }
 
+# authenticated issue-comment tool
+# Important safety feature: even though the agent has the tool, GitHub receives nothing unless confirmed=True.
+# This prevents accidental comments.
+@mcp.tool
+def add_issue_comment(
+    issue_number: int,
+    comment_body: str,
+    confirmed: bool = False,
+) -> dict[str, object]:
+    """Post a comment on a GitHub issue after explicit confirmation."""
+
+    if not confirmed:
+        return {
+            "posted": False,
+            "message": "Explicit confirmation is required before posting.",
+        }
+
+    if issue_number < 1:
+        raise ValueError("The issue number must be positive.")
+
+    cleaned_comment = comment_body.strip()
+
+    if not cleaned_comment:
+        raise ValueError("The comment cannot be empty.")
+
+    if len(cleaned_comment) > 4_000:
+        raise ValueError("The comment cannot exceed 4,000 characters.")
+
+    if not os.getenv("GITHUB_TOKEN"):
+        raise RuntimeError("GITHUB_TOKEN is not configured.")
+
+    response = httpx.post(
+        f"{GITHUB_API_URL}/issues/{issue_number}/comments",
+        headers=github_headers(),
+        json={"body": cleaned_comment},
+        timeout=15.0,
+    )
+    response.raise_for_status()
+
+    created_comment = response.json()
+
+    return {
+        "posted": True,
+        "issue_number": issue_number,
+        "comment_id": created_comment["id"],
+        "url": created_comment["html_url"],
+    }
+
 if __name__ == "__main__":
     mcp.run()
