@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 
 import os
+import json
 import base64 # code updated
 import boto3 # code updated - connect mcp server to the table
 from boto3.dynamodb.conditions import Key #- retrieve saved investigation
@@ -26,6 +27,16 @@ DYNAMODB_TABLE = os.getenv(
 dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 records_table = dynamodb.Table(DYNAMODB_TABLE)
 
+# Bedrock converts repository text into 256-number embeddings.
+# S3 Vectors stores and searches those embeddings.
+VECTOR_BUCKET = "n11242795-repo-custodian-vectors"
+VECTOR_INDEX = "repository-knowledge"
+EMBEDDING_MODEL_ID = "amazon.titan-embed-image-v1"
+EMBEDDING_DIMENSION = 256
+
+bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+s3_vectors = boto3.client("s3vectors", region_name=AWS_REGION)
+
 mcp = FastMCP("Repository Custodian tools")
 
 def github_headers() -> dict[str, str]:
@@ -41,6 +52,27 @@ def github_headers() -> dict[str, str]:
         headers["Authorization"] = f"Bearer {token}"
 
     return headers
+
+# text embedding helper
+def embed_text(text: str) -> list[float]:
+    """Convert text into a 256-dimensional Titan embedding."""
+
+    response = bedrock_runtime.invoke_model(
+        modelId=EMBEDDING_MODEL_ID,
+        contentType="application/json",
+        accept="application/json",
+        body=json.dumps(
+            {
+                "inputText": text,
+                "embeddingConfig": {
+                    "outputEmbeddingLength": EMBEDDING_DIMENSION
+                },
+            }
+        ),
+    )
+
+    response_body = json.loads(response["body"].read())
+    return response_body["embedding"]
 
 @mcp.tool
 def get_repository_scope() -> dict[str, object]:
@@ -339,6 +371,86 @@ def get_issue_analyses(issue_number: int, limit: int = 10) -> str:
         results.append(
             f"{item['createdAt']} | Status: {item['status']} | "
             f"Summary: {item['summary']} | Evidence: {item.get('evidence', '')}"
+        )
+
+    return "\n".join(results)
+
+# This stores:
+# the embedding for semantic comparison;
+# the original text so the agent can read the result;
+# its repository source;
+# a stable vector key so the record can be updated later.
+@mcp.tool
+def index_knowledge_chunk(
+    vector_key: str,
+    text: str,
+    source: str,
+    confirmed: bool = False,
+) -> str:
+    """Embed and store one repository knowledge chunk in S3 Vectors."""
+
+    if not confirmed:
+        raise ValueError("Explicit confirmation is required before indexing knowledge.")
+    if not vector_key.strip():
+        raise ValueError("vector_key cannot be empty.")
+    if not text.strip():
+        raise ValueError("text cannot be empty.")
+    if len(text) > 500:
+        raise ValueError("text cannot exceed 500 characters.")
+    if not source.strip():
+        raise ValueError("source cannot be empty.")
+
+    s3_vectors.put_vectors(
+        vectorBucketName=VECTOR_BUCKET,
+        indexName=VECTOR_INDEX,
+        vectors=[
+            {
+                "key": vector_key.strip(),
+                "data": {"float32": embed_text(text.strip())},
+                "metadata": {
+                    "kind": "repository-text",
+                    "text": text.strip(),
+                    "source": source.strip(),
+                    "repository": REPOSITORY,
+                },
+            }
+        ],
+    )
+
+    return f"Indexed repository knowledge under key '{vector_key.strip()}'."
+
+# semantic search tool
+@mcp.tool
+def search_repository_knowledge(query: str, limit: int = 3) -> str:
+    """Search indexed repository knowledge by semantic similarity."""
+
+    if not query.strip():
+        raise ValueError("query cannot be empty.")
+    if len(query) > 500:
+        raise ValueError("query cannot exceed 500 characters.")
+
+    limit = max(1, min(limit, 10))
+
+    response = s3_vectors.query_vectors(
+        vectorBucketName=VECTOR_BUCKET,
+        indexName=VECTOR_INDEX,
+        queryVector={"float32": embed_text(query.strip())},
+        topK=limit,
+        returnDistance=True,
+        returnMetadata=True,
+    )
+
+    matches = response.get("vectors", [])
+    if not matches:
+        return "No relevant repository knowledge was found."
+
+    results = []
+    for match in matches:
+        metadata = match.get("metadata", {})
+        results.append(
+            f"Source: {metadata.get('source', 'unknown')} | "
+            f"Distance: {match.get('distance', 'unknown')} | "
+            f"Text: {metadata.get('text', '')}"
         )
 
     return "\n".join(results)

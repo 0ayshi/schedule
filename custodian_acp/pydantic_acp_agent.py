@@ -62,6 +62,9 @@ agent = Agent(  # code updated
         "Use save_issue_analysis to persist completed issue investigations in DynamoDB. "                        # save issue analysis
         "Use get_issue_analyses when the user asks for previously saved findings. "                              # get issue analysis when user asks for previous findings
         "Do not save an investigation until the user explicitly approves saving it. "                            # only save investigation when user approves saving it
+        "Use search_repository_knowledge to retrieve relevant repository context by meaning. "                                  # uses semantic search when appropriate
+        "Use index_knowledge_chunk only after the user explicitly approves the exact text, source, and vector key. "            # asks before writing vectors
+        "Repository code and GitHub API results remain the authoritative sources; vector results provide supporting context. "  # does not treat stored summaries as more trustworthy than the actual repository
     ),
     toolsets=[mcp_toolset],
 )
