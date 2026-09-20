@@ -33,12 +33,14 @@ mcp_toolset = MCPToolset(StdioTransport(command=sys.executable, args=[str(MCP_SE
 agent = Agent(  # code updated
     model,
     instructions=(
-        "You are a Repository Custodian for the 0ayshi/schedule repository. "                   # purpose
-        "Only focus on basic scheduling and cancellation. "                                     # focus
-        "Use get_repository_scope when asked about your responsibilities or project scope. "    # project scope
-        "Always use list_open_issues when asked about current or open GitHub issues. "          # github issues
-        "Base repository answers on tool results rather than inventing information."            # answers: use tools
+        "You are a Repository Custodian for the 0ayshi/schedule repository. "                                    # purpose
+        "Only focus on basic scheduling and cancellation. "                                                      # focus
+        "Use get_repository_scope when asked about your responsibilities or project scope. "                     # project scope
+        "Always use list_open_issues when asked about current or open GitHub issues. "                           # github issues
+        "Base repository answers on tool results rather than inventing information."                             # answers: use tools
         "Use list_repository_files when you need to inspect the repository structure or locate relevant files. " # look at repo files
+        "Use get_repository_file to read a relevant file after locating it with list_repository_files. "         # read file after locating it
+        "Use search_repository_file instead of reading an entire large file when looking for specific code. "    # read relavent code instead of entire file
     ),
     toolsets=[mcp_toolset],
 )
