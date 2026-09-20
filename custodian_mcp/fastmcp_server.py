@@ -1,14 +1,30 @@
 # code updated
 """MCP tools for the Repository Custodian agent."""
 
+from datetime import datetime, timezone
+
 import os
 import base64 # code updated
+import boto3 # code updated - connect mcp server to the table
+from boto3.dynamodb.conditions import Key #- retrieve saved investigation
 import httpx
 from fastmcp import FastMCP
 
 REPOSITORY = "0ayshi/schedule"
 GITHUB_API_URL = f"https://api.github.com/repos/{REPOSITORY}"
 DEFAULT_BRANCH = "master"
+
+# use AWS’s Sydney region;
+# connect to your named DynamoDB table;
+# allow the table name to be changed through an environment variable later.
+AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
+DYNAMODB_TABLE = os.getenv(
+    "DYNAMODB_TABLE",
+    "n11242795-repo-custodian-records",
+)
+
+dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
+records_table = dynamodb.Table(DYNAMODB_TABLE)
 
 mcp = FastMCP("Repository Custodian tools")
 
@@ -263,6 +279,69 @@ def add_issue_comment(
         "comment_id": created_comment["id"],
         "url": created_comment["html_url"],
     }
+
+# tool that saves an investigation record
+@mcp.tool
+def save_issue_analysis(
+    issue_number: int,
+    summary: str,
+    status: str = "investigated",
+    evidence: str = "",
+) -> str:
+    """Save an issue investigation result in DynamoDB."""
+
+    if issue_number < 1:
+        raise ValueError("issue_number must be positive.")
+    if not summary.strip():
+        raise ValueError("summary cannot be empty.")
+
+    created_at = datetime.now(timezone.utc).isoformat()
+    record = {
+        "PK": f"ISSUE#{issue_number}",
+        "SK": f"ANALYSIS#{created_at}",
+        "recordType": "IssueAnalysis",
+        "repository": REPOSITORY,
+        "issueNumber": issue_number,
+        "summary": summary.strip(),
+        "status": status.strip(),
+        "evidence": evidence.strip(),
+        "createdAt": created_at,
+    }
+
+    records_table.put_item(Item=record)
+    return f"Saved analysis for issue #{issue_number} at {created_at}."
+
+# retrieve saved investigations
+@mcp.tool
+def get_issue_analyses(issue_number: int, limit: int = 10) -> str:
+    """Retrieve saved investigation records for a GitHub issue."""
+
+    if issue_number < 1:
+        raise ValueError("issue_number must be positive.")
+
+    limit = max(1, min(limit, 20))
+
+    response = records_table.query(
+        KeyConditionExpression=(
+            Key("PK").eq(f"ISSUE#{issue_number}")
+            & Key("SK").begins_with("ANALYSIS#")
+        ),
+        ScanIndexForward=False,
+        Limit=limit,
+    )
+
+    items = response.get("Items", [])
+    if not items:
+        return f"No saved analyses were found for issue #{issue_number}."
+
+    results = []
+    for item in items:
+        results.append(
+            f"{item['createdAt']} | Status: {item['status']} | "
+            f"Summary: {item['summary']} | Evidence: {item.get('evidence', '')}"
+        )
+
+    return "\n".join(results)
 
 if __name__ == "__main__":
     mcp.run()

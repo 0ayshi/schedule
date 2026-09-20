@@ -59,6 +59,9 @@ agent = Agent(  # code updated
         "Before posting an issue comment, draft the exact comment and show it to the user. "                     # draft comment and show user before posting issue
         "Only call add_issue_comment with confirmed=True after the user explicitly approves that exact comment. "# only call after user approves comment
         "Never treat a request to investigate or draft as permission to post."                                   # cannot post request until you clearly say post it
+        "Use save_issue_analysis to persist completed issue investigations in DynamoDB. "                        # save issue analysis
+        "Use get_issue_analyses when the user asks for previously saved findings. "                              # get issue analysis when user asks for previous findings
+        "Do not save an investigation until the user explicitly approves saving it. "                            # only save investigation when user approves saving it
     ),
     toolsets=[mcp_toolset],
 )
