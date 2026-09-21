@@ -455,5 +455,75 @@ def search_repository_knowledge(query: str, limit: int = 3) -> str:
 
     return "\n".join(results)
 
+# allow the agent to update repository documentation
+#only changes documentation files;
+#requires your explicit confirmation;
+#creates a traceable Git commit;
+#cannot silently alter Python source code.
+@mcp.tool
+def update_repository_document(
+    file_path: str,
+    new_content: str,
+    commit_message: str,
+    confirmed: bool = False,
+) -> str:
+    """Create or update a repository documentation file after approval."""
+
+    if not confirmed:
+        raise ValueError("Explicit confirmation is required before updating GitHub.")
+
+    normalized_path = file_path.strip().lstrip("/")
+    allowed_extensions = (".md", ".rst", ".txt")
+
+    if not normalized_path or ".." in normalized_path:
+        raise ValueError("Invalid documentation path.")
+    if not normalized_path.lower().endswith(allowed_extensions):
+        raise ValueError("Only .md, .rst, and .txt documentation files may be updated.")
+    if not new_content.strip():
+        raise ValueError("Documentation content cannot be empty.")
+    if len(new_content) > 50000:
+        raise ValueError("Documentation content cannot exceed 50,000 characters.")
+    if not commit_message.strip():
+        raise ValueError("Commit message cannot be empty.")
+    if not os.getenv("GITHUB_TOKEN"):
+        raise RuntimeError("GITHUB_TOKEN is not configured.")
+
+    file_url = f"{GITHUB_API_URL}/contents/{normalized_path}"
+
+    existing_response = httpx.get(
+        file_url,
+        headers=github_headers(),
+        params={"ref": DEFAULT_BRANCH},
+        timeout=20,
+    )
+
+    payload = {
+        "message": commit_message.strip(),
+        "content": base64.b64encode(
+            new_content.encode("utf-8")
+        ).decode("ascii"),
+        "branch": DEFAULT_BRANCH,
+    }
+
+    if existing_response.status_code == 200:
+        payload["sha"] = existing_response.json()["sha"]
+    elif existing_response.status_code != 404:
+        existing_response.raise_for_status()
+
+    response = httpx.put(
+        file_url,
+        headers=github_headers(),
+        json=payload,
+        timeout=20,
+    )
+    response.raise_for_status()
+
+    result = response.json()
+    commit_sha = result["commit"]["sha"]
+    return (
+        f"Updated {normalized_path} on {DEFAULT_BRANCH}. "
+        f"Commit SHA: {commit_sha}"
+    )
+
 if __name__ == "__main__":
     mcp.run()

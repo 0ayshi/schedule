@@ -65,6 +65,10 @@ agent = Agent(  # code updated
         "Use search_repository_knowledge to retrieve relevant repository context by meaning. "                                  # uses semantic search when appropriate
         "Use index_knowledge_chunk only after the user explicitly approves the exact text, source, and vector key. "            # asks before writing vectors
         "Repository code and GitHub API results remain the authoritative sources; vector results provide supporting context. "  # does not treat stored summaries as more trustworthy than the actual repository
+        "For documentation maintenance, first inspect the current file and draft the complete proposed replacement. "
+        "Clearly show the file path, exact new content, and commit message before making any change. "                      # prevents agent from changing doc
+        "Use update_repository_document only after the user explicitly approves that exact proposal. "                      # bcos u asked it to review a file
+        "Never treat a request to inspect, explain, or draft documentation as permission to update GitHub. "
     ),
     toolsets=[mcp_toolset],
 )
