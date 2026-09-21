@@ -27,6 +27,10 @@ const sendButton = getElement<HTMLButtonElement>("send");
 const messagesElement = getElement<HTMLElement>("messages");
 const statusElement = getElement<HTMLElement>("connection-status");
 const themeToggle = getElement<HTMLButtonElement>("theme-toggle");
+// code updated
+const imageInput = getElement<HTMLInputElement>("image-upload");
+const imageStatus = getElement<HTMLElement>("image-status");
+
 
 const themeStorageKey = "acp-chat-theme";
 let themePreference = readStoredTheme() ?? "system";
@@ -35,12 +39,50 @@ let connection: acp.ClientConnection | null = null;
 let sessionId: string | null = null;
 let isBusy = false;
 let messages: ChatMessage[] = [];
+// code updated - connect new html elements
+let selectedImage: ImagePart | null = null;
 
 function getElement<T extends Element>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing element #${id}`);
   return element as unknown as T;
 }
+
+// code updated
+// converts selected img into ACP's base64 img format
+async function imageFileToPart(file: File): Promise<ImagePart> {
+  const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error("Please select a PNG, JPEG, or WebP image.");
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("The image must be 5 MB or smaller.");
+  }
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("The image could not be read."));
+      }
+    };
+
+    reader.onerror = () => reject(new Error("The image could not be read."));
+    reader.readAsDataURL(file);
+  });
+
+  return {
+    type: "image",
+    data: dataUrl.split(",", 2)[1],
+    mimeType: file.type,
+  };
+}
+
 
 function readStoredTheme(): ThemePreference | null {
   try {
@@ -76,6 +118,7 @@ function setStatus(text: string, kind: "idle" | "working" | "ready" | "error"): 
 function setBusy(value: boolean): void {
   isBusy = value;
   promptInput.disabled = !connection || value;
+  imageInput.disabled = !connection || value;   // code updated - img picker follows connection state
   sendButton.disabled = !connection || value;
   cancelButton.disabled = !connection || !value;
 }
@@ -245,22 +288,51 @@ function disconnect(): void {
   setBusy(false);
 }
 
-// #region send-prompt
-async function sendPrompt(text: string): Promise<void> {
+// #region send-prompt - code updated
+// so can send text+img
+async function sendPrompt(
+  text: string,
+  image: ImagePart | null,
+): Promise<void> {
   if (!connection || !sessionId || isBusy) return;
 
-  addMessage({ role: "user", parts: [{ type: "text", text }] });
+  const parts: MessagePart[] = [];
+
+  if (text) {
+    parts.push({ type: "text", text });
+  }
+
+  if (image) {
+    parts.push(image);
+  }
+
+  if (parts.length === 0) return;
+
+  addMessage({ role: "user", parts });
   setBusy(true);
   setStatus("Sending", "working");
 
   try {
-    const result = await connection.agent.request(acp.methods.agent.session.prompt, {
-      sessionId,
-      prompt: [{ type: "text", text }],
-    });
-    if (result.stopReason === "cancelled") {
-      addMessage({ role: "system", parts: [{ type: "text", text: "The turn was cancelled." }] });
+    const result = await connection.agent.request(
+      acp.methods.agent.session.prompt,
+      {
+        sessionId,
+        prompt: parts,
+      },
+    );
+
+    if (
+      typeof result === "object" &&
+      result !== null &&
+      "stopReason" in result &&
+      result.stopReason === "cancelled"
+    ) {
+      addMessage({
+        role: "system",
+        parts: [{ type: "text", text: "The turn was cancelled." }],
+      });
     }
+
     setStatus("Ready", "ready");
   } catch (error) {
     addMessage({
@@ -305,13 +377,42 @@ cancelButton.addEventListener("click", () => {
   void cancelPrompt();
 });
 
+// handle user selcting an img - code updated
+imageInput.addEventListener("change", async () => {
+  const file = imageInput.files?.[0];
+  selectedImage = null;
+
+  if (!file) {
+    imageStatus.textContent = "No image selected";
+    return;
+  }
+
+  try {
+    selectedImage = await imageFileToPart(file);
+    imageStatus.textContent = `Selected: ${file.name}`;
+  } catch (error) {
+    imageInput.value = "";
+    imageStatus.textContent = errorMessage(error);
+  }
+});
+
+// code updated - form submission updated to include selected img
 promptForm.addEventListener("submit", (event) => {
   event.preventDefault();
+
   const text = promptInput.value.trim();
-  if (!text) return;
+  const image = selectedImage;
+
+  if (!text && !image) return;
+
   promptInput.value = "";
-  void sendPrompt(text);
+  imageInput.value = "";
+  imageStatus.textContent = "No image selected";
+  selectedImage = null;
+
+  void sendPrompt(text, image);
 });
+
 
 promptInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {

@@ -3,6 +3,9 @@
 # C extensions
 *.so
 
+# code updated - venv
+.venv/
+
 # Packages
 *.egg
 *.egg-info

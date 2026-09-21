@@ -14,6 +14,12 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
+# code updated - decode/validate img
+import base64
+import binascii
+import hashlib
+import json
+
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
@@ -118,13 +124,96 @@ async def relay(websocket: ServerConnection) -> None:
         )
 #endregion websocket-relay
 
+# code updated - image-interception helper
+def prepare_inline_images(message: str) -> tuple[str, list[str]]:
+    """Validate inline images, echo them to the client, and keep them away from a text-only model."""
+    record = json.loads(message)
 
-#region relay-records
-async def copy_to_agent(websocket: ServerConnection, stdin: asyncio.StreamWriter) -> None:
+    if record.get("method") != "session/prompt":
+        return message, []
+
+    params = record.get("params", {})
+    prompt = params.get("prompt", [])
+    session_id = params.get("sessionId")
+
+    if not isinstance(prompt, list) or not session_id:
+        return message, []
+
+    transformed_prompt = []
+    image_updates = []
+
+    for part in prompt:
+        if not isinstance(part, dict) or part.get("type") != "image":
+            transformed_prompt.append(part)
+            continue
+
+        mime_type = part.get("mimeType")
+        encoded_data = part.get("data")
+
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise ValueError("Only PNG, JPEG, and WebP inline images are supported.")
+        if not isinstance(encoded_data, str):
+            raise ValueError("Inline image data must be Base64 text.")
+
+        try:
+            image_bytes = base64.b64decode(encoded_data, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError("Inline image data is not valid Base64.") from error
+
+        if len(image_bytes) > 5 * 1024 * 1024:
+            raise ValueError("Inline images must be 5 MB or smaller.")
+
+        digest = hashlib.sha256(image_bytes).hexdigest()
+
+        transformed_prompt.append(
+            {
+                "type": "text",
+                "text": (
+                    "[Inline image received and validated by the ACP bridge. "
+                    f"MIME type: {mime_type}; size: {len(image_bytes)} bytes; "
+                    f"SHA-256: {digest}. "
+                    "The configured Bedrock model is text-only, so do not claim "
+                    "to know the image's visual contents.]"
+                ),
+            }
+        )
+
+        image_updates.append(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": session_id,
+                        "update": {
+                            "sessionUpdate": "agent_message_chunk",
+                            "content": part,
+                        },
+                    },
+                }
+            )
+        )
+
+    params["prompt"] = transformed_prompt
+    return json.dumps(record), image_updates
+
+#region relay-records - code updated 
+async def copy_to_agent(
+    websocket: ServerConnection,
+    stdin: asyncio.StreamWriter,
+) -> None:
     async for message in websocket:
         if isinstance(message, bytes) or "\n" in message or "\r" in message:
-            raise ValueError("ACP WebSocket messages must be one text JSON-RPC record")
-        stdin.write(message.encode("utf-8") + b"\n")
+            raise ValueError(
+                "ACP WebSocket messages must be one text JSON-RPC record"
+            )
+
+        transformed_message, image_updates = prepare_inline_images(message)
+
+        for update in image_updates:
+            await websocket.send(update)
+
+        stdin.write(transformed_message.encode("utf-8") + b"\n")
         await stdin.drain()
 
 

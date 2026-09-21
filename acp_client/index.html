@@ -31,6 +31,16 @@
       <form id="prompt-form" class="composer">
         <label class="sr-only" for="prompt">Message</label>
         <textarea id="prompt" rows="3" placeholder="Send a message…" disabled></textarea>
+        <div class="attachment-row"> <!-- allows png jpeg and webp images-->
+          <label for="image-upload">Attach image</label>
+          <input
+            id="image-upload"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            disabled
+          />
+          <span id="image-status">No image selected</span>
+        </div>
         <div class="composer-footer">
           <span class="hint">Enter sends · Shift+Enter adds a new line</span>
           <div class="composer-actions">
