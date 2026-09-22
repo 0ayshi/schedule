@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!custodian_acp/
+!custodian_acp/**
+!custodian_mcp/
+!custodian_mcp/**
