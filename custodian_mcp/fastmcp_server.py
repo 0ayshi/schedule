@@ -2,6 +2,7 @@
 """MCP tools for the Repository Custodian agent."""
 
 from datetime import datetime, timezone
+from functools import lru_cache
 
 import os
 import json
@@ -23,6 +24,9 @@ DYNAMODB_TABLE = os.getenv(
     "DYNAMODB_TABLE",
     "n11242795-repo-custodian-records",
 )
+
+GITHUB_SECRET_NAME = "n11242795/repo-custodian/github-token"
+secrets_manager = boto3.client("secretsmanager", region_name=AWS_REGION)
 
 dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 records_table = dynamodb.Table(DYNAMODB_TABLE)
@@ -47,11 +51,25 @@ def github_headers() -> dict[str, str]:
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-    token = os.getenv("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    token = github_token()
+    headers["Authorization"] = f"Bearer {token}"
 
     return headers
+
+@lru_cache(maxsize=1)
+def github_token() -> str:
+    """Retrieve the GitHub token securely from AWS Secrets Manager."""
+
+    response = secrets_manager.get_secret_value(SecretId=GITHUB_SECRET_NAME)
+    secret = json.loads(response["SecretString"])
+    token = secret.get("GITHUB_TOKEN")
+
+    if not token:
+        raise RuntimeError(
+            "The GitHub token is missing from AWS Secrets Manager."
+        )
+
+    return token
 
 # text embedding helper
 def embed_text(text: str) -> list[float]:
@@ -292,8 +310,7 @@ def add_issue_comment(
     if len(cleaned_comment) > 4_000:
         raise ValueError("The comment cannot exceed 4,000 characters.")
 
-    if not os.getenv("GITHUB_TOKEN"):
-        raise RuntimeError("GITHUB_TOKEN is not configured.")
+    github_token()
 
     response = httpx.post(
         f"{GITHUB_API_URL}/issues/{issue_number}/comments",
@@ -485,8 +502,7 @@ def update_repository_document(
         raise ValueError("Documentation content cannot exceed 50,000 characters.")
     if not commit_message.strip():
         raise ValueError("Commit message cannot be empty.")
-    if not os.getenv("GITHUB_TOKEN"):
-        raise RuntimeError("GITHUB_TOKEN is not configured.")
+    github_token()
 
     file_url = f"{GITHUB_API_URL}/contents/{normalized_path}"
 

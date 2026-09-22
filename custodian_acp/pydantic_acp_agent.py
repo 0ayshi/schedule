@@ -26,13 +26,7 @@ MODEL_ID = "nvidia.nemotron-super-3-120b"
 #MCP_SERVER = Path(__file__).parents[1] / "mcp_servers_python" / "fastmcp_server.py" - changed mcp server path
 MCP_SERVER = Path(__file__).parents[1] / "custodian_mcp" / "fastmcp_server.py"
 
-# code updated
-# Forward only the GitHub token required by the MCP subprocess.
-MCP_ENV = {}
 
-github_token = os.getenv("GITHUB_TOKEN")
-if github_token:
-    MCP_ENV["GITHUB_TOKEN"] = github_token
 
 #region agent-configuration
 # This is the same Bedrock model and local MCP toolset as the terminal agent.
@@ -41,7 +35,6 @@ mcp_toolset = MCPToolset(
     StdioTransport(
         command=sys.executable,
         args=[str(MCP_SERVER)],
-        env=MCP_ENV,
     )
 )
 
