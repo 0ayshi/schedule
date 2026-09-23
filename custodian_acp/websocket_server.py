@@ -31,7 +31,7 @@ LOGGER = logging.getLogger(__name__)
 CONNECTION_IDS = itertools.count(1)
 
 
-#region websocket-relay
+# region websocket-relay
 async def relay(websocket: ServerConnection) -> None:
     """Run one stdio ACP agent and relay this browser connection to it."""
     if websocket.request.path != PATH:
@@ -52,10 +52,14 @@ async def relay(websocket: ServerConnection) -> None:
         )
     except OSError:
         LOGGER.exception("Connection %s: could not start the ACP agent", connection_id)
-        await websocket.close(code=1011, reason="Could not start the ACP agent; check the server log")
+        await websocket.close(
+            code=1011, reason="Could not start the ACP agent; check the server log"
+        )
         return
 
-    LOGGER.info("Connection %s: started ACP agent process %s", connection_id, process.pid)
+    LOGGER.info(
+        "Connection %s: started ACP agent process %s", connection_id, process.pid
+    )
     assert process.stdin is not None
     assert process.stdout is not None
     assert process.stderr is not None
@@ -92,21 +96,29 @@ async def relay(websocket: ServerConnection) -> None:
             LOGGER.error(
                 "Connection %s: ACP agent closed stdout unexpectedly (exit status %s)",
                 connection_id,
-                process.returncode if process.returncode is not None else "not yet available",
+                (
+                    process.returncode
+                    if process.returncode is not None
+                    else "not yet available"
+                ),
             )
             await websocket.close(
                 code=1011,
                 reason="ACP agent stopped unexpectedly; check the server log",
             )
     except ValueError as error:
-        LOGGER.warning("Connection %s: invalid WebSocket message: %s", connection_id, error)
+        LOGGER.warning(
+            "Connection %s: invalid WebSocket message: %s", connection_id, error
+        )
         await websocket.close(code=1003, reason=str(error))
     except ConnectionClosed:
         pass
     except Exception:
         LOGGER.exception("Connection %s: ACP relay failed", connection_id)
         with suppress(ConnectionClosed):
-            await websocket.close(code=1011, reason="ACP relay failed; check the server log")
+            await websocket.close(
+                code=1011, reason="ACP relay failed; check the server log"
+            )
     finally:
         await stop_agent(process, connection_id)
         # Let the stderr reader drain messages written while the process was
@@ -122,7 +134,10 @@ async def relay(websocket: ServerConnection) -> None:
             process.pid,
             process.returncode,
         )
-#endregion websocket-relay
+
+
+# endregion websocket-relay
+
 
 # code updated - image-interception helper
 def prepare_inline_images(message: str) -> tuple[str, list[str]]:
@@ -197,16 +212,15 @@ def prepare_inline_images(message: str) -> tuple[str, list[str]]:
     params["prompt"] = transformed_prompt
     return json.dumps(record), image_updates
 
-#region relay-records - code updated 
+
+# region relay-records - code updated
 async def copy_to_agent(
     websocket: ServerConnection,
     stdin: asyncio.StreamWriter,
 ) -> None:
     async for message in websocket:
         if isinstance(message, bytes) or "\n" in message or "\r" in message:
-            raise ValueError(
-                "ACP WebSocket messages must be one text JSON-RPC record"
-            )
+            raise ValueError("ACP WebSocket messages must be one text JSON-RPC record")
 
         transformed_message, image_updates = prepare_inline_images(message)
 
@@ -217,12 +231,16 @@ async def copy_to_agent(
         await stdin.drain()
 
 
-async def copy_to_browser(stdout: asyncio.StreamReader, websocket: ServerConnection) -> None:
+async def copy_to_browser(
+    stdout: asyncio.StreamReader, websocket: ServerConnection
+) -> None:
     while line := await stdout.readline():
         message = line.rstrip(b"\r\n")
         if message:
             await websocket.send(message.decode("utf-8"))
-#endregion relay-records
+
+
+# endregion relay-records
 
 
 async def log_agent_stderr(stderr: asyncio.StreamReader, connection_id: int) -> None:
@@ -255,9 +273,11 @@ async def stop_agent(process: asyncio.subprocess.Process, connection_id: int) ->
     await process.wait()
 
 
-#region websocket-server
+# region websocket-server
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve the CAB432 ACP agent over WebSocket.")
+    parser = argparse.ArgumentParser(
+        description="Serve the CAB432 ACP agent over WebSocket."
+    )
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", default=PORT, type=int)
     parser.add_argument(
@@ -271,11 +291,15 @@ async def main() -> None:
     async with serve(relay, args.host, args.port):
         print(f"ACP server listening at ws://{args.host}:{args.port}{PATH}")
         await asyncio.Future()
-#endregion websocket-server
+
+
+# endregion websocket-server
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s", stream=sys.stderr)
+    logging.basicConfig(
+        level=logging.WARNING, format="%(levelname)s: %(message)s", stream=sys.stderr
+    )
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

@@ -6,9 +6,9 @@ from functools import lru_cache
 
 import os
 import json
-import base64 # code updated
-import boto3 # code updated - connect mcp server to the table
-from boto3.dynamodb.conditions import Key #- retrieve saved investigation
+import base64  # code updated
+import boto3  # code updated - connect mcp server to the table
+from boto3.dynamodb.conditions import Key  # - retrieve saved investigation
 import httpx
 from fastmcp import FastMCP
 
@@ -43,6 +43,7 @@ s3_vectors = boto3.client("s3vectors", region_name=AWS_REGION)
 
 mcp = FastMCP("Repository Custodian tools")
 
+
 def github_headers() -> dict[str, str]:
     """Create headers for GitHub API requests."""
 
@@ -56,6 +57,7 @@ def github_headers() -> dict[str, str]:
 
     return headers
 
+
 @lru_cache(maxsize=1)
 def github_token() -> str:
     """Retrieve the GitHub token securely from AWS Secrets Manager."""
@@ -65,11 +67,10 @@ def github_token() -> str:
     token = secret.get("GITHUB_TOKEN")
 
     if not token:
-        raise RuntimeError(
-            "The GitHub token is missing from AWS Secrets Manager."
-        )
+        raise RuntimeError("The GitHub token is missing from AWS Secrets Manager.")
 
     return token
+
 
 # text embedding helper
 def embed_text(text: str) -> list[float]:
@@ -82,15 +83,14 @@ def embed_text(text: str) -> list[float]:
         body=json.dumps(
             {
                 "inputText": text,
-                "embeddingConfig": {
-                    "outputEmbeddingLength": EMBEDDING_DIMENSION
-                },
+                "embeddingConfig": {"outputEmbeddingLength": EMBEDDING_DIMENSION},
             }
         ),
     )
 
     response_body = json.loads(response["body"].read())
     return response_body["embedding"]
+
 
 @mcp.tool
 def get_repository_scope() -> dict[str, object]:
@@ -104,6 +104,7 @@ def get_repository_scope() -> dict[str, object]:
             "cancellation",
         ],
     }
+
 
 @mcp.tool
 def list_open_issues(limit: int = 10) -> dict[str, object]:
@@ -141,6 +142,7 @@ def list_open_issues(limit: int = 10) -> dict[str, object]:
         "issues": issues,
     }
 
+
 @mcp.tool
 def list_repository_files(
     path_prefix: str = "",
@@ -161,8 +163,7 @@ def list_repository_files(
     files = [
         item["path"]
         for item in response.json().get("tree", [])
-        if item["type"] == "blob"
-        and item["path"].startswith(path_prefix)
+        if item["type"] == "blob" and item["path"].startswith(path_prefix)
     ][:safe_limit]
 
     return {
@@ -171,6 +172,7 @@ def list_repository_files(
         "count": len(files),
         "files": files,
     }
+
 
 # Github send file contents encoded in base64
 # so tool decodes them back into readable text
@@ -215,6 +217,7 @@ def get_repository_file(
         "content": full_content[:safe_maximum],
         "truncated": len(full_content) > safe_maximum,
     }
+
 
 # smaller tool that returns only matching code sections instead of the entire file.
 @mcp.tool
@@ -282,6 +285,7 @@ def search_repository_file(
         "matches": matches,
     }
 
+
 # authenticated issue-comment tool
 # Important safety feature: even though the agent has the tool, GitHub receives nothing unless confirmed=True.
 # This prevents accidental comments.
@@ -329,6 +333,7 @@ def add_issue_comment(
         "url": created_comment["html_url"],
     }
 
+
 # tool that saves an investigation record
 @mcp.tool
 def save_issue_analysis(
@@ -360,6 +365,7 @@ def save_issue_analysis(
     records_table.put_item(Item=record)
     return f"Saved analysis for issue #{issue_number} at {created_at}."
 
+
 # retrieve saved investigations
 @mcp.tool
 def get_issue_analyses(issue_number: int, limit: int = 10) -> str:
@@ -372,8 +378,7 @@ def get_issue_analyses(issue_number: int, limit: int = 10) -> str:
 
     response = records_table.query(
         KeyConditionExpression=(
-            Key("PK").eq(f"ISSUE#{issue_number}")
-            & Key("SK").begins_with("ANALYSIS#")
+            Key("PK").eq(f"ISSUE#{issue_number}") & Key("SK").begins_with("ANALYSIS#")
         ),
         ScanIndexForward=False,
         Limit=limit,
@@ -391,6 +396,7 @@ def get_issue_analyses(issue_number: int, limit: int = 10) -> str:
         )
 
     return "\n".join(results)
+
 
 # This stores:
 # the embedding for semantic comparison;
@@ -436,6 +442,7 @@ def index_knowledge_chunk(
 
     return f"Indexed repository knowledge under key '{vector_key.strip()}'."
 
+
 # semantic search tool
 @mcp.tool
 def search_repository_knowledge(query: str, limit: int = 3) -> str:
@@ -472,11 +479,12 @@ def search_repository_knowledge(query: str, limit: int = 3) -> str:
 
     return "\n".join(results)
 
+
 # allow the agent to update repository documentation
-#only changes documentation files;
-#requires your explicit confirmation;
-#creates a traceable Git commit;
-#cannot silently alter Python source code.
+# only changes documentation files;
+# requires your explicit confirmation;
+# creates a traceable Git commit;
+# cannot silently alter Python source code.
 @mcp.tool
 def update_repository_document(
     file_path: str,
@@ -515,9 +523,7 @@ def update_repository_document(
 
     payload = {
         "message": commit_message.strip(),
-        "content": base64.b64encode(
-            new_content.encode("utf-8")
-        ).decode("ascii"),
+        "content": base64.b64encode(new_content.encode("utf-8")).decode("ascii"),
         "branch": DEFAULT_BRANCH,
     }
 
@@ -537,9 +543,9 @@ def update_repository_document(
     result = response.json()
     commit_sha = result["commit"]["sha"]
     return (
-        f"Updated {normalized_path} on {DEFAULT_BRANCH}. "
-        f"Commit SHA: {commit_sha}"
+        f"Updated {normalized_path} on {DEFAULT_BRANCH}. " f"Commit SHA: {commit_sha}"
     )
+
 
 if __name__ == "__main__":
     mcp.run()

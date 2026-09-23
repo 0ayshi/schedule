@@ -10,7 +10,6 @@ from urllib.request import Request, urlopen
 
 import boto3
 
-
 REPOSITORY = os.getenv("REPOSITORY", "0ayshi/schedule")
 TABLE_NAME = os.getenv(
     "DYNAMODB_TABLE",
@@ -24,8 +23,7 @@ def get_open_issues() -> list[dict]:
     """Retrieve open issues from GitHub, excluding pull requests."""
 
     request = Request(
-        f"https://api.github.com/repos/{REPOSITORY}/issues"
-        "?state=open&per_page=100",
+        f"https://api.github.com/repos/{REPOSITORY}/issues" "?state=open&per_page=100",
         headers={
             "Accept": "application/vnd.github+json",
             "User-Agent": "CAB432-Repository-Custodian",
@@ -54,9 +52,7 @@ def lambda_handler(event, context):
                 "repository": REPOSITORY,
                 "status": "success",
                 "openIssueCount": len(issues),
-                "openIssueNumbers": [
-                    issue["number"] for issue in issues
-                ],
+                "openIssueNumbers": [issue["number"] for issue in issues],
                 "createdAt": created_at,
             }
         )
