@@ -1,0 +1,48 @@
+cloudInfrastructure:
+  - type: Bedrock foundation model
+    arn: "nvidia.nemotron-super-3-120b"
+    description: "Generates the Repository Custodian's conversational answers and issue-triage recommendations."
+
+  - type: Bedrock embedding model
+    arn: "amazon.titan-embed-image-v1"
+    description: "Converts repository content into 256-dimensional embeddings for semantic retrieval."
+
+  - type: ECS task
+    arn: "arn:aws:ecs:ap-southeast-2:901444280953:task/n11242795-repo-custodian-cluster/93b46762e2f342c9a6c4bd9f95e6b57a"
+    description: "Runs the containerised ACP WebSocket backend and Repository Custodian agent as a standalone Fargate task."
+
+  - type: MCP server
+    arn: "arn:aws:ecs:ap-southeast-2:901444280953:task-definition/n11242795-repo-custodian-acp:1"
+    description: "Packages the FastMCP repository middleware, which runs as a separate stdio subprocess and exposes GitHub, DynamoDB and vector-search tools."
+
+  - type: S3 Vectors bucket
+    arn: "arn:aws:s3vectors:ap-southeast-2:901444280953:bucket/n11242795-repo-custodian-vectors"
+    description: "Stores vectorised repository knowledge used to ground the agent's answers."
+
+  - type: Vector store
+    arn: "arn:aws:s3vectors:ap-southeast-2:901444280953:bucket/n11242795-repo-custodian-vectors/index/repository-knowledge"
+    description: "Provides nearest-neighbour semantic search over indexed repository documentation and source content."
+
+  - type: SQS queue
+    arn: "arn:aws:sqs:ap-southeast-2:901444280953:n11242795-repo-custodian-heartbeat"
+    description: "Buffers scheduled repository-heartbeat events before they are processed asynchronously."
+
+  - type: EventBridge schedule
+    arn: "arn:aws:scheduler:ap-southeast-2:901444280953:schedule/default/n11242795-repo-custodian-heartbeat-schedule"
+    description: "Autonomously sends a daily repository-heartbeat event to the SQS queue."
+
+  - type: Secrets Manager secret
+    arn: "arn:aws:secretsmanager:ap-southeast-2:901444280953:secret:n11242795/repo-custodian/github-token-Vr5PSV"
+    description: "Securely stores the GitHub token used by authorised MCP repository operations."
+
+  - type: DynamoDB table
+    arn: "arn:aws:dynamodb:ap-southeast-2:901444280953:table/n11242795-repo-custodian-records"
+    description: "Persists issue analyses, heartbeat history and autonomous Bedrock triage results."
+
+  - type: Lambda function
+    arn: "arn:aws:lambda:ap-southeast-2:901444280953:function:n11242795-repo-custodian-heartbeat-worker"
+    description: "Consumes queued heartbeat events, detects new GitHub issues, invokes Bedrock for triage and saves the results."
+
+metaData:
+  track: "B"
+  qutUsernameTag: "n11242795@qut.edu.au"
